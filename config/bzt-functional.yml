@@ -1,0 +1,66 @@
+settings:
+  artifacts-dir: artifacts/functional
+
+execution:
+  - executor: jmeter
+    scenario: functional-tests
+    concurrency: 1
+    iterations: 1
+
+scenarios:
+  functional-tests:
+    script: jmeter/ServeRest.jmx
+
+modules:
+  jmeter:
+    path: "./apache-jmeter-5.6.3"
+    detect-plugins: false
+    csv-jtl-flags:
+      time: true
+      timestamp: true
+      latency: true
+      connectTime: true
+      success: true
+      label: true
+      code: true
+      message: true
+      threadName: true
+      saveAssertionResultsFailureMessage: true
+      bytes: true
+      threadCounts: true
+      sentBytes: true
+
+services:
+  - module: shellexec
+    prepare:
+      - command: 'cmd /c if exist "relatorio" rmdir /s /q "relatorio"'
+        ignore-failure: true
+
+      - command: 'cmd /c if exist "temp" rmdir /s /q "temp"'
+        ignore-failure: true
+
+      - command: 'cmd /c if exist "report-temp" rmdir /s /q "report-temp"'
+        ignore-failure: true
+
+      - command: 'cmd /c if exist "artifacts\functional\kpi*.jtl" del /q "artifacts\functional\kpi*.jtl"'
+        ignore-failure: true
+
+      - command: 'cmd /c if exist "artifacts\functional\error*.jtl" del /q "artifacts\functional\error*.jtl"'
+        ignore-failure: true
+
+      - command: 'cmd /c if exist "artifacts\functional\resultados-funcionais-serverest.jtl" del /q "artifacts\functional\resultados-funcionais-serverest.jtl"'
+        ignore-failure: true
+
+    post-process:
+      - command: 'cmd /c copy /Y "%TAURUS_ARTIFACTS_DIR%\kpi.jtl" "%TAURUS_ARTIFACTS_DIR%\resultados-funcionais-serverest.jtl"'
+        ignore-failure: false
+
+      - command: 'powershell -ExecutionPolicy Bypass -File ".\scripts\gerar-relatorio-funcional.ps1" -InputJtl "%TAURUS_ARTIFACTS_DIR%\resultados-funcionais-serverest.jtl" -FallbackJtl "%TAURUS_ARTIFACTS_DIR%\kpi.jtl" -OutputDir "relatorio"'
+        ignore-failure: false
+
+      - command: 'cmd /c if not "%GITHUB_ACTIONS%"=="true" if exist "relatorio\index.html" start "" "relatorio\index.html"'
+        ignore-failure: true
+
+reporting:
+  - module: console
+  - module: final-stats

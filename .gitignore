@@ -1,0 +1,22 @@
+# Dependencias locais
+apache-jmeter-*/
+*.zip
+
+# Saidas de execucao
+artifacts/
+relatorio/
+report-temp/
+temp/
+
+# Projetos separados
+POSTMAN/
+
+# Logs
+*.log
+
+# Sistema/IDE
+.DS_Store
+Thumbs.db
+~$*
+.idea/
+.vscode/

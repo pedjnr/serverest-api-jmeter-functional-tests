@@ -1,0 +1,104 @@
+name: Testes funcionais e Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test-and-build-report:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configurar Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Instalar Taurus
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Baixar Apache JMeter
+        shell: pwsh
+        run: |
+          $ProgressPreference = "SilentlyContinue"
+          Invoke-WebRequest `
+            -Uri "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.zip" `
+            -OutFile "apache-jmeter-5.6.3.zip"
+          Expand-Archive -Path "apache-jmeter-5.6.3.zip" -DestinationPath "."
+
+      - name: Subir API ServeRest
+        shell: pwsh
+        run: |
+          Start-Process -FilePath "npx.cmd" -ArgumentList "-y serverest@latest" -WindowStyle Hidden
+
+          $deadline = (Get-Date).AddSeconds(60)
+          do {
+            try {
+              Invoke-WebRequest -Uri "http://localhost:3000/usuarios" -UseBasicParsing -TimeoutSec 5 | Out-Null
+              Write-Host "ServeRest disponivel em http://localhost:3000"
+              exit 0
+            } catch {
+              Start-Sleep -Seconds 2
+            }
+          } while ((Get-Date) -lt $deadline)
+
+          throw "ServeRest nao ficou disponivel em http://localhost:3000 dentro do tempo esperado."
+
+      - name: Executar testes funcionais
+        run: bzt config/bzt-functional.yml
+
+      - name: Preparar relatorio para Pages
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath "relatorio\index.html")) {
+            throw "Relatorio HTML nao foi gerado."
+          }
+          New-Item -ItemType File -Path "relatorio\.nojekyll" -Force | Out-Null
+
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload do relatorio
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: relatorio
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test-and-build-report
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Publicar no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
