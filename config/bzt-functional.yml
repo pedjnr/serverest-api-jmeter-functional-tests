@@ -31,5 +31,8 @@ modules:
       sentBytes: true
 
 reporting:
+  - module: passfail
+    criteria:
+      - fail>0%, continue as failed
   - module: console
   - module: final-stats
