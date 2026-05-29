@@ -1,0 +1,6 @@
+*.jmx linguist-language=XML linguist-detectable
+*.ps1 linguist-generated
+*.md linguist-documentation
+*.docx linguist-documentation
+*.xlsx linguist-documentation
+assets/** linguist-documentation
