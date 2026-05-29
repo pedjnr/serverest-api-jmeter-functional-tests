@@ -40,6 +40,9 @@ jobs:
         with:
           node-version: "24"
 
+      - name: Instalar ServeRest
+        run: npm install --global serverest@3.2.0
+
       - name: Instalar Taurus
         run: |
           python -m pip install --upgrade pip
@@ -57,20 +60,37 @@ jobs:
       - name: Subir API ServeRest
         shell: pwsh
         run: |
-          Start-Process -FilePath "npx.cmd" -ArgumentList "-y serverest@latest" -WindowStyle Hidden
+          $stdout = Join-Path $PWD "serverest.out.log"
+          $stderr = Join-Path $PWD "serverest.err.log"
+          $serverest = (Get-Command "serverest.cmd" -ErrorAction Stop).Source
 
-          $deadline = (Get-Date).AddSeconds(60)
+          $process = Start-Process `
+            -FilePath $serverest `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr `
+            -PassThru `
+            -WindowStyle Hidden
+
+          $deadline = (Get-Date).AddSeconds(120)
           do {
+            if ($process.HasExited) {
+              if (Test-Path -LiteralPath $stdout) { Get-Content -LiteralPath $stdout }
+              if (Test-Path -LiteralPath $stderr) { Get-Content -LiteralPath $stderr }
+              throw "ServeRest encerrou antes de ficar disponivel. ExitCode: $($process.ExitCode)"
+            }
+
             try {
-              Invoke-WebRequest -Uri "http://localhost:3000/usuarios" -UseBasicParsing -TimeoutSec 5 | Out-Null
-              Write-Host "ServeRest disponivel em http://localhost:3000"
+              Invoke-WebRequest -Uri "http://127.0.0.1:3000/usuarios" -UseBasicParsing -TimeoutSec 5 | Out-Null
+              Write-Host "ServeRest disponivel em http://127.0.0.1:3000"
               exit 0
             } catch {
               Start-Sleep -Seconds 2
             }
           } while ((Get-Date) -lt $deadline)
 
-          throw "ServeRest nao ficou disponivel em http://localhost:3000 dentro do tempo esperado."
+          if (Test-Path -LiteralPath $stdout) { Get-Content -LiteralPath $stdout }
+          if (Test-Path -LiteralPath $stderr) { Get-Content -LiteralPath $stderr }
+          throw "ServeRest nao ficou disponivel em http://127.0.0.1:3000 dentro do tempo esperado."
 
       - name: Executar testes funcionais
         run: bzt config/bzt-functional.yml
