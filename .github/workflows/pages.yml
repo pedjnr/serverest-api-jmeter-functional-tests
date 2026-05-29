@@ -57,43 +57,55 @@ jobs:
             -OutFile "apache-jmeter-5.6.3.zip"
           Expand-Archive -Path "apache-jmeter-5.6.3.zip" -DestinationPath "."
 
-      - name: Subir API ServeRest
+      - name: Executar testes funcionais
         shell: pwsh
         run: |
           $stdout = Join-Path $PWD "serverest.out.log"
           $stderr = Join-Path $PWD "serverest.err.log"
           $serverest = (Get-Command "serverest.cmd" -ErrorAction Stop).Source
 
-          $process = Start-Process `
-            -FilePath $serverest `
-            -RedirectStandardOutput $stdout `
-            -RedirectStandardError $stderr `
-            -PassThru `
-            -WindowStyle Hidden
+          $process = $null
 
-          $deadline = (Get-Date).AddSeconds(120)
-          do {
-            if ($process.HasExited) {
+          try {
+            $process = Start-Process `
+              -FilePath $serverest `
+              -RedirectStandardOutput $stdout `
+              -RedirectStandardError $stderr `
+              -PassThru `
+              -WindowStyle Hidden
+
+            $deadline = (Get-Date).AddSeconds(120)
+            do {
+              if ($process.HasExited) {
+                if (Test-Path -LiteralPath $stdout) { Get-Content -LiteralPath $stdout }
+                if (Test-Path -LiteralPath $stderr) { Get-Content -LiteralPath $stderr }
+                throw "ServeRest encerrou antes de ficar disponivel. ExitCode: $($process.ExitCode)"
+              }
+
+              try {
+                Invoke-WebRequest -Uri "http://localhost:3000/usuarios" -UseBasicParsing -TimeoutSec 5 | Out-Null
+                Write-Host "ServeRest disponivel em http://localhost:3000"
+                break
+              } catch {
+                Start-Sleep -Seconds 2
+              }
+            } while ((Get-Date) -lt $deadline)
+
+            if ((Get-Date) -ge $deadline) {
               if (Test-Path -LiteralPath $stdout) { Get-Content -LiteralPath $stdout }
               if (Test-Path -LiteralPath $stderr) { Get-Content -LiteralPath $stderr }
-              throw "ServeRest encerrou antes de ficar disponivel. ExitCode: $($process.ExitCode)"
+              throw "ServeRest nao ficou disponivel em http://localhost:3000 dentro do tempo esperado."
             }
 
-            try {
-              Invoke-WebRequest -Uri "http://127.0.0.1:3000/usuarios" -UseBasicParsing -TimeoutSec 5 | Out-Null
-              Write-Host "ServeRest disponivel em http://127.0.0.1:3000"
-              exit 0
-            } catch {
-              Start-Sleep -Seconds 2
+            bzt config/bzt-functional.yml
+            if ($LASTEXITCODE -ne 0) {
+              throw "Taurus finalizou com codigo $LASTEXITCODE."
             }
-          } while ((Get-Date) -lt $deadline)
-
-          if (Test-Path -LiteralPath $stdout) { Get-Content -LiteralPath $stdout }
-          if (Test-Path -LiteralPath $stderr) { Get-Content -LiteralPath $stderr }
-          throw "ServeRest nao ficou disponivel em http://127.0.0.1:3000 dentro do tempo esperado."
-
-      - name: Executar testes funcionais
-        run: bzt config/bzt-functional.yml
+          } finally {
+            if ($process -and -not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+            }
+          }
 
       - name: Preparar relatorio para Pages
         shell: pwsh
